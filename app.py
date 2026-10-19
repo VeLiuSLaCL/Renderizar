@@ -5,12 +5,13 @@ from PIL import Image
 
 st.set_page_config(page_title="Ampliador INE 200%", page_icon="🪪", layout="centered")
 
-st.title("🪪 Unificador INE 200% (Reverso al Frente)")
-st.write("El programa elimina la franja sobrante inferior del Frente y coloca el Reverso en primer plano para evitar superposiciones.")
+st.title("🪪 Unificador INE 200% (Ajuste Reverso Completo)")
+st.write("El programa ajusta el recorte del Reverso para capturar todo el texto inferior y apilar ambas imágenes perfectamente en una hoja Carta.")
 
 def recortar_y_ampliar_credencial(imagen_pil, es_pagina_1=True, factor_zoom=2.0):
     """
-    Recorta el Cuadrante 1 omitiendo los fondos sobrantes para evitar encimados.
+    Recorta el Cuadrante 1 eliminando márgenes sobrantes para evitar que el frente
+    tape al reverso al encimarse.
     """
     img = imagen_pil.convert("RGB")
     ancho, alto = img.size
@@ -18,30 +19,32 @@ def recortar_y_ampliar_credencial(imagen_pil, es_pagina_1=True, factor_zoom=2.0)
     # Márgenes superiores (0.5 cm en pág 1 -> 59px, 1.5 cm en pág 2 -> 177px a 300 DPI)
     margen_sup_px = 59 if es_pagina_1 else 177
 
+    # Ancho: Mitad de la hoja (Cuadrante 1)
     ancho_cuadrante = ancho / 2
 
-    # Alto ajustado: Se reduce el alto del Frente a 26% para eliminar el lienzo blanco que tapaba el reverso
+    # Alto ajustado: 26% para el Frente (elimina espacio blanco sobrante inferior)
+    # y 42% para el Reverso (captura todo el texto/código inferior completo)
     porcentaje_alto = 0.26 if es_pagina_1 else 0.42
     alto_cuadrante = int(alto * porcentaje_alto)
 
     y_inicio = min(margen_sup_px, int(alto / 2) - 10)
     y_fin = min(y_inicio + alto_cuadrante, alto)
 
-    # Recorte estricto
+    # Recorte ajustado: (x1, y1, x2, y2)
     cuadrante = img.crop((0, y_inicio, ancho_cuadrante, y_fin))
 
-    # Ampliación al 200%
+    # Ampliar al 200%
     nuevo_ancho = int(cuadrante.width * factor_zoom)
     nuevo_alto = int(cuadrante.height * factor_zoom)
 
     return cuadrante.resize((nuevo_ancho, nuevo_alto), Image.Resampling.LANCZOS)
 
 def combinar_frente_y_reverso(img_frente, img_reverso):
-    """Une el Frente (al fondo) y el Reverso (al frente) sin cortes visibles."""
+    """Une el Frente (al fondo) y el Reverso (al frente) en un lienzo tamaño Carta."""
     frente_200 = recortar_y_ampliar_credencial(img_frente, es_pagina_1=True, factor_zoom=2.0)
     reverso_200 = recortar_y_ampliar_credencial(img_reverso, es_pagina_1=False, factor_zoom=2.0)
 
-    # Lienzo Hoja Carta en Blanco a 300 DPI (2550 x 3300 px)
+    # Lienzo Carta a 300 DPI (2550 x 3300 px)
     ANCHO_CARTA, ALTO_CARTA = 2550, 3300
     hoja_carta = Image.new("RGB", (ANCHO_CARTA, ALTO_CARTA), (255, 255, 255))
 
@@ -55,18 +58,18 @@ def combinar_frente_y_reverso(img_frente, img_reverso):
         escala_r = ANCHO_MAXIMO / reverso_200.width
         reverso_200 = reverso_200.resize((ANCHO_MAXIMO, int(reverso_200.height * escala_r)), Image.Resampling.LANCZOS)
 
-    # Posicionamiento exacto
+    # Posicionamiento compacto y continuo
     pos_x_frente = (ANCHO_CARTA - frente_200.width) // 2
-    pos_y_frente = 50
+    pos_y_frente = 50  # Pegado arriba
 
     pos_x_reverso = (ANCHO_CARTA - reverso_200.width) // 2
-    # El reverso se posiciona de forma continua
+    # El reverso se coloca pegado con una ligera separación de 10px
     pos_y_reverso = pos_y_frente + frente_200.height + 10  
 
-    # 1. CAPA INFERIOR (FONDO): Se pega primero el frente
+    # 1. CAPA 1 (AL FONDO): Se pega primero la imagen del Frente
     hoja_carta.paste(frente_200, (pos_x_frente, pos_y_frente))
 
-    # 2. CAPA SUPERIOR (FRENTE): Se pega el reverso encima de la hoja para que NADA lo tape
+    # 2. CAPA 2 (AL FRENTE): Se pega el Reverso encima para asegurar que quede en primer plano
     hoja_carta.paste(reverso_200, (pos_x_reverso, pos_y_reverso))
 
     return hoja_carta
@@ -105,7 +108,7 @@ if uploaded_files:
             nuevo_doc.save(output_buffer)
             output_buffer.seek(0)
 
-            st.image(hoja_final, caption="Vista previa: Reverso completo en primer plano sin recortes", use_column_width=True)
+            st.image(hoja_final, caption="Vista previa: Frente y Reverso unificados 100% completos", use_column_width=True)
             st.success("¡Documento generado con éxito!")
             st.download_button(
                 label="📥 Descargar PDF Unificado",
@@ -124,7 +127,7 @@ if uploaded_files:
         hoja_final.save(output_buffer, format="PNG", quality=95)
         output_buffer.seek(0)
 
-        st.image(hoja_final, caption="Vista previa: Reverso completo en primer plano sin recortes", use_column_width=True)
+        st.image(hoja_final, caption="Vista previa: Frente y Reverso unificados 100% completos", use_column_width=True)
         st.success("¡Imagen generada con éxito!")
         st.download_button(
             label="📥 Descargar Imagen Unificada",

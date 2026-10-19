@@ -5,121 +5,105 @@ from PIL import Image
 
 st.set_page_config(page_title="Ampliador INE 200%", page_icon="🪪", layout="centered")
 
-st.title("🪪 Unificador de INE al 200% (Ajuste de Margen 1 cm)")
-st.write("Sube tu archivo. El programa tomará el **Cuadrante 1** de cada página, lo ampliará al **200%** y colocará ambas imágenes juntas subiendo el margen superior $1\\text{ cm}$.")
+st.title("🪪 Ampliador de Primer Cuadrante al 200%")
+st.write("Sube tu documento. El programa tomará la **esquina superior izquierda (Cuadrante 1)** recortando 1 cm del margen superior, la ampliará al **200%** y la colocará en la **hoja tamaño Carta**.")
 
-def combinar_cuadrantes_con_margen_reducido(img_pag1, img_pag2, factor_zoom=2.0):
-    """Toma el cuadrante 1 de ambas imágenes, las amplía al 200% y las apila con margen ajustado."""
-    # 1. Recortar Cuadrante 1 puro de la Página 1 (Frente)
-    ancho1, alto1 = img_pag1.size
-    cuadrante_frente = img_pag1.crop((0, 0, ancho1 / 2, alto1 / 2))
+def ampliar_primer_cuadrante(imagen_pil, factor_zoom=2.0):
+    """Recorta el primer cuadrante quitando 1 cm del margen superior y lo amplía al 200%."""
+    img = imagen_pil.convert("RGB")
+    ancho, alto = img.size
 
-    # 2. Recortar Cuadrante 1 puro de la Página 2 (Reverso)
-    ancho2, alto2 = img_pag2.size
-    cuadrante_reverso = img_pag2.crop((0, 0, ancho2 / 2, alto2 / 2))
+    # A 300 DPI, 1 cm equivale aproximadamente a 118 píxeles
+    MARGEN_SUPERIOR_PX = 118
 
-    # 3. Ampliar ambos cuadrantes al 200%
-    frente_200 = cuadrante_frente.resize(
-        (int(cuadrante_frente.width * factor_zoom), int(cuadrante_frente.height * factor_zoom)),
-        Image.Resampling.LANCZOS
-    )
-    reverso_200 = cuadrante_reverso.resize(
-        (int(cuadrante_reverso.width * factor_zoom), int(cuadrante_reverso.height * factor_zoom)),
-        Image.Resampling.LANCZOS
-    )
+    # Ajuste de seguridad por si la imagen es pequeña
+    y_inicio = min(MARGEN_SUPERIOR_PX, int(alto / 2) - 10)
 
-    # 4. Crear lienzo en blanco para Hoja Carta (2550 x 3300 px a 300 DPI)
+    # 1. Recortar Cuadrante 1 omitiendo el primer centímetro superior: (x1, y1, x2, y2)
+    cuadrante_1 = img.crop((0, y_inicio, ancho / 2, alto / 2))
+
+    # 2. Multiplicar dimensiones al 200%
+    nuevo_ancho = int(cuadrante_1.width * factor_zoom)
+    nuevo_alto = int(cuadrante_1.height * factor_zoom)
+
+    # Escalado LANCZOS para mantener la máxima nitidez en letras y fotos
+    cuadrante_ampliado = cuadrante_1.resize((nuevo_ancho, nuevo_alto), Image.Resampling.LANCZOS)
+
+    # 3. Crear el lienzo en blanco para Hoja Carta (2550 x 3300 px a 300 DPI)
     ANCHO_CARTA, ALTO_CARTA = 2550, 3300
     hoja_carta = Image.new("RGB", (ANCHO_CARTA, ALTO_CARTA), (255, 255, 255))
 
-    # 5. Ajustar ancho en caso de que exceda los bordes de la página
-    if frente_200.width > ANCHO_CARTA:
-        escala_f = ANCHO_CARTA / frente_200.width
-        frente_200 = frente_200.resize((ANCHO_CARTA, int(frente_200.height * escala_f)), Image.Resampling.LANCZOS)
+    # Ajustar si el ancho ampliado excede ligeramente los márgenes de la carta
+    if cuadrante_ampliado.width > ANCHO_CARTA:
+        escala = ANCHO_CARTA / cuadrante_ampliado.width
+        cuadrante_ampliado = cuadrante_ampliado.resize(
+            (ANCHO_CARTA, int(cuadrante_ampliado.height * escala)), 
+            Image.Resampling.LANCZOS
+        )
 
-    if reverso_200.width > ANCHO_CARTA:
-        escala_r = ANCHO_CARTA / reverso_200.width
-        reverso_200 = reverso_200.resize((ANCHO_CARTA, int(reverso_200.height * escala_r)), Image.Resampling.LANCZOS)
-
-    # 6. Posicionamiento vertical (1 cm a 300 DPI = ~118px)
-    MARGEN_SUPERIOR = 118  # 1 cm desde el borde superior
-    SEPARACION_INTERMEDIA = 80  # Separación compacta entre las dos imágenes (~0.7 cm)
-
-    pos_x_frente = (ANCHO_CARTA - frente_200.width) // 2
-    pos_y_frente = MARGEN_SUPERIOR
-
-    pos_x_reverso = (ANCHO_CARTA - reverso_200.width) // 2
-    pos_y_reverso = pos_y_frente + frente_200.height + SEPARACION_INTERMEDIA
-
-    # Pegar ambas caras en la hoja Carta
-    hoja_carta.paste(frente_200, (pos_x_frente, pos_y_frente))
-    hoja_carta.paste(reverso_200, (pos_x_reverso, pos_y_reverso))
+    # 4. Pegar el cuadrante ampliado en la parte superior de la nueva hoja carta
+    pos_x = (ANCHO_CARTA - cuadrante_ampliado.width) // 2
+    hoja_carta.paste(cuadrante_ampliado, (pos_x, 0))
 
     return hoja_carta
 
-uploaded_files = st.file_uploader(
-    "Selecciona tu PDF (de 2 páginas) o sube las 2 imágenes de la INE",
-    type=["pdf", "png", "jpg", "jpeg"],
-    accept_multiple_files=True
-)
+uploaded_file = st.file_uploader("Selecciona tu archivo PDF o Imagen", type=["pdf", "png", "jpg", "jpeg"])
 
-if uploaded_files:
-    # CASO PDF (2 páginas)
-    if len(uploaded_files) == 1 and uploaded_files[0].name.lower().endswith(".pdf"):
-        pdf_file = uploaded_files[0]
-        doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
+if uploaded_file is not None:
+    file_bytes = uploaded_file.read()
+    filename = uploaded_file.name.lower()
 
-        if len(doc) < 2:
-            st.warning("El archivo PDF debe tener al menos 2 páginas.")
-        else:
-            pix1 = doc[0].get_pixmap(dpi=300)
-            img_pag1 = Image.open(io.BytesIO(pix1.tobytes("png")))
+    st.info("Procesando el primer cuadrante de cada página al 200%...")
 
-            pix2 = doc[1].get_pixmap(dpi=300)
-            img_pag2 = Image.open(io.BytesIO(pix2.tobytes("png")))
+    # CASO PDF
+    if filename.endswith(".pdf"):
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        nuevo_doc = fitz.open()
 
-            hoja_final = combinar_cuadrantes_con_margen_reducido(img_pag1, img_pag2, factor_zoom=2.0)
+        for num_pag, page in enumerate(doc, start=1):
+            # Renderizar la página a 300 DPI para alta definición
+            pix = page.get_pixmap(dpi=300)
+            img_original = Image.open(io.BytesIO(pix.tobytes("png")))
 
-            nuevo_doc = fitz.open()
+            # Ampliar cuadrante 1 recortando 1 cm superior
+            hoja_final = ampliar_primer_cuadrante(img_original, factor_zoom=2.0)
+
             img_bytes = io.BytesIO()
             hoja_final.save(img_bytes, format="PNG")
             img_bytes.seek(0)
 
-            nueva_pagina = nuevo_doc.new_page(width=612, height=792)  # Carta en PDF
+            # Insertar en nueva página Carta (612 x 792 pt)
+            nueva_pagina = nuevo_doc.new_page(width=612, height=792)
             nueva_pagina.insert_image(nueva_pagina.rect, stream=img_bytes.getvalue())
 
-            output_buffer = io.BytesIO()
-            nuevo_doc.save(output_buffer)
-            output_buffer.seek(0)
-
-            st.image(hoja_final, caption="Vista previa: Cuadrantes 1 apilados con 1 cm de margen superior", use_column_width=True)
-            st.success("¡PDF generado con éxito!")
-            st.download_button(
-                label="📥 Descargar PDF Unificado",
-                data=output_buffer,
-                file_name=f"ine_unificada_margen1cm_{pdf_file.name}",
-                mime="application/pdf"
-            )
-
-    # CASO 2 IMÁGENES SEPARADAS
-    elif len(uploaded_files) == 2:
-        img1 = Image.open(uploaded_files[0])
-        img2 = Image.open(uploaded_files[1])
-
-        hoja_final = combinar_cuadrantes_con_margen_reducido(img1, img2, factor_zoom=2.0)
-
         output_buffer = io.BytesIO()
-        hoja_final.save(output_buffer, format="PNG", quality=95)
+        nuevo_doc.save(output_buffer)
         output_buffer.seek(0)
 
-        st.image(hoja_final, caption="Vista previa: Cuadrantes 1 apilados con 1 cm de margen superior", use_column_width=True)
-        st.success("¡Imagen generada con éxito!")
+        st.success(f"¡Procesadas {len(doc)} página(s) con éxito!")
         st.download_button(
-            label="📥 Descargar Imagen Unificada",
+            label="📥 Descargar PDF Ampliado al 200%",
             data=output_buffer,
-            file_name="ine_unificada_margen1cm.png",
-            mime="image/png"
+            file_name=f"ine_cuadrante1_200_{uploaded_file.name}",
+            mime="application/pdf"
         )
 
+    # CASO IMAGEN
     else:
-        st.warning("Sube 1 archivo PDF de 2 páginas o 2 archivos de imagen.")
+        img_original = Image.open(io.BytesIO(file_bytes))
+        hoja_final = ampliar_primer_cuadrante(img_original, factor_zoom=2.0)
+
+        output_buffer = io.BytesIO()
+        fmt = "PNG" if filename.endswith(".png") else "JPEG"
+        hoja_final.save(output_buffer, format=fmt, quality=95)
+        output_buffer.seek(0)
+
+        st.image(hoja_final, caption="Vista previa: Primer cuadrante ampliado al 200% en Hoja Carta", use_column_width=True)
+
+        st.success("¡Imagen ampliada con éxito!")
+        st.download_button(
+            label="📥 Descargar Imagen Ampliada al 200%",
+            data=output_buffer,
+            file_name=f"ine_cuadrante1_200_{uploaded_file.name}",
+            mime=f"image/{fmt.lower()}"
+        )

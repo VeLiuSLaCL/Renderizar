@@ -6,27 +6,27 @@ from PIL import Image
 st.set_page_config(page_title="Ampliador INE 200%", page_icon="🪪", layout="centered")
 
 st.title("🪪 Ampliador de Primer Cuadrante al 200%")
-st.write("Sube tu documento. El programa tomará la **esquina superior izquierda (Cuadrante 1)** recortando 1 cm del margen superior, la ampliará al **200%** y la colocará en la **hoja tamaño Carta**.")
+st.write("Sube tu documento. El programa tomará el **Cuadrante 1** recortando 0.5 cm a la Hoja 1 y 1 cm a la Hoja 2 del margen superior, ampliándolos al **200%**.")
 
-def ampliar_primer_cuadrante(imagen_pil, factor_zoom=2.0):
-    """Recorta el primer cuadrante quitando 1 cm del margen superior y lo amplía al 200%."""
+def ampliar_primer_cuadrante(imagen_pil, es_pagina_1=True, factor_zoom=2.0):
+    """Recorta el primer cuadrante ajustando el margen superior según el número de página."""
     img = imagen_pil.convert("RGB")
     ancho, alto = img.size
 
-    # A 300 DPI, 1 cm equivale aproximadamente a 118 píxeles
-    MARGEN_SUPERIOR_PX = 118
+    # A 300 DPI: 1 cm = ~118 px, 0.5 cm = ~59 px
+    margen_px = 59 if es_pagina_1 else 118
 
     # Ajuste de seguridad por si la imagen es pequeña
-    y_inicio = min(MARGEN_SUPERIOR_PX, int(alto / 2) - 10)
+    y_inicio = min(margen_px, int(alto / 2) - 10)
 
-    # 1. Recortar Cuadrante 1 omitiendo el primer centímetro superior: (x1, y1, x2, y2)
+    # 1. Recortar Cuadrante 1 omitiendo el margen superior correspondiente
     cuadrante_1 = img.crop((0, y_inicio, ancho / 2, alto / 2))
 
     # 2. Multiplicar dimensiones al 200%
     nuevo_ancho = int(cuadrante_1.width * factor_zoom)
     nuevo_alto = int(cuadrante_1.height * factor_zoom)
 
-    # Escalado LANCZOS para mantener la máxima nitidez en letras y fotos
+    # Escalado LANCZOS para mantener la máxima nitidez
     cuadrante_ampliado = cuadrante_1.resize((nuevo_ancho, nuevo_alto), Image.Resampling.LANCZOS)
 
     # 3. Crear el lienzo en blanco para Hoja Carta (2550 x 3300 px a 300 DPI)
@@ -65,8 +65,9 @@ if uploaded_file is not None:
             pix = page.get_pixmap(dpi=300)
             img_original = Image.open(io.BytesIO(pix.tobytes("png")))
 
-            # Ampliar cuadrante 1 recortando 1 cm superior
-            hoja_final = ampliar_primer_cuadrante(img_original, factor_zoom=2.0)
+            # Evaluar si es la página 1 para aplicar el recorte correspondiente
+            es_pag_1 = (num_pag == 1)
+            hoja_final = ampliar_primer_cuadrante(img_original, es_pagina_1=es_pag_1, factor_zoom=2.0)
 
             img_bytes = io.BytesIO()
             hoja_final.save(img_bytes, format="PNG")
@@ -91,7 +92,7 @@ if uploaded_file is not None:
     # CASO IMAGEN
     else:
         img_original = Image.open(io.BytesIO(file_bytes))
-        hoja_final = ampliar_primer_cuadrante(img_original, factor_zoom=2.0)
+        hoja_final = ampliar_primer_cuadrante(img_original, es_pagina_1=True, factor_zoom=2.0)
 
         output_buffer = io.BytesIO()
         fmt = "PNG" if filename.endswith(".png") else "JPEG"

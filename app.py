@@ -3,10 +3,10 @@ import fitz  # PyMuPDF
 import streamlit as st
 from PIL import Image
 
-st.set_page_config(page_title="Ampliador INE 200%", page_icon="🪪", layout="centered")
+st.set_page_config(page_title="Ampliador e Insertador INE 200%", page_icon="🪪", layout="centered")
 
-st.title("🪪 Unificador INE 200% (Ajuste Reverso Completo)")
-st.write("El programa ajusta el recorte del Reverso para capturar todo el texto inferior y apilar ambas imágenes perfectamente en una hoja Carta.")
+st.title("🪪 Unificador de INE al 200% e Inserción en PDF")
+st.write("Sube el PDF o imágenes de la INE (Frente y Reverso) y el PDF de destino donde deseas **insertar la INE en la Página 2**.")
 
 def recortar_y_ampliar_credencial(imagen_pil, es_pagina_1=True, factor_zoom=2.0):
     """
@@ -22,17 +22,15 @@ def recortar_y_ampliar_credencial(imagen_pil, es_pagina_1=True, factor_zoom=2.0)
     # Ancho: Mitad de la hoja (Cuadrante 1)
     ancho_cuadrante = ancho / 2
 
-    # Alto diferenciado: 30% para el frente, 42% para el reverso (captura el texto inferior completo)
+    # Alto diferenciado: 30% para el frente, 42% para el reverso
     porcentaje_alto = 0.30 if es_pagina_1 else 0.42
     alto_cuadrante = int(alto * porcentaje_alto)
 
     y_inicio = min(margen_sup_px, int(alto / 2) - 10)
     y_fin = min(y_inicio + alto_cuadrante, alto)
 
-    # Recorte ajustado: (x1, y1, x2, y2)
     cuadrante = img.crop((0, y_inicio, ancho_cuadrante, y_fin))
 
-    # Ampliar al 200%
     nuevo_ancho = int(cuadrante.width * factor_zoom)
     nuevo_alto = int(cuadrante.height * factor_zoom)
 
@@ -43,7 +41,6 @@ def combinar_frente_y_reverso(img_frente, img_reverso):
     frente_200 = recortar_y_ampliar_credencial(img_frente, es_pagina_1=True, factor_zoom=2.0)
     reverso_200 = recortar_y_ampliar_credencial(img_reverso, es_pagina_1=False, factor_zoom=2.0)
 
-    # Lienzo Carta a 300 DPI (2550 x 3300 px)
     ANCHO_CARTA, ALTO_CARTA = 2550, 3300
     hoja_carta = Image.new("RGB", (ANCHO_CARTA, ALTO_CARTA), (255, 255, 255))
 
@@ -57,82 +54,86 @@ def combinar_frente_y_reverso(img_frente, img_reverso):
         escala_r = ANCHO_MAXIMO / reverso_200.width
         reverso_200 = reverso_200.resize((ANCHO_MAXIMO, int(reverso_200.height * escala_r)), Image.Resampling.LANCZOS)
 
-    # Acomodo: Se eleva la segunda imagen 110px (~0.5 cm extra respecto a los 50px anteriores)
     pos_x_frente = (ANCHO_CARTA - frente_200.width) // 2
-    pos_y_frente = 50  # Pegado arriba
+    pos_y_frente = 50
 
     pos_x_reverso = (ANCHO_CARTA - reverso_200.width) // 2
-    pos_y_reverso = pos_y_frente + frente_200.height - 110  # Subir 0.5 cm más la segunda imagen
+    pos_y_reverso = pos_y_frente + frente_200.height - 110
 
-    # 1. PASO 1 (AL FONDO): Pegamos primero la Imagen 1
+    # 1. Pegar frente al fondo
     hoja_carta.paste(frente_200, (pos_x_frente, pos_y_frente))
 
-    # 2. PASO 2 (AL FRENTE): Pegamos la Imagen 2 en segundo lugar para colocarla por encima
+    # 2. Pegar reverso al frente
     hoja_carta.paste(reverso_200, (pos_x_reverso, pos_y_reverso))
 
     return hoja_carta
 
-uploaded_files = st.file_uploader(
-    "Selecciona tu PDF de 2 páginas o las 2 imágenes (Frente y Reverso)",
+# --- PASO 1: SUBIR INE ---
+st.subheader("1. Sube el origen de la INE")
+uploaded_ine_files = st.file_uploader(
+    "PDF de 2 páginas de la INE o 2 Imágenes (Frente y Reverso)",
     type=["pdf", "png", "jpg", "jpeg"],
-    accept_multiple_files=True
+    accept_multiple_files=True,
+    key="ine_files"
 )
 
-if uploaded_files:
-    if len(uploaded_files) == 1 and uploaded_files[0].name.lower().endswith(".pdf"):
-        pdf_file = uploaded_files[0]
-        doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
+# --- PASO 2: SUBIR DOCUMENTO DESTINO ---
+st.subheader("2. Sube el PDF destino donde insertarás la INE")
+uploaded_target_pdf = st.file_uploader(
+    "PDF Destino (Se insertará la INE como la Página 2)",
+    type=["pdf"],
+    key="target_pdf"
+)
 
-        if len(doc) < 2:
-            st.warning("El PDF debe tener al menos 2 páginas.")
+if uploaded_ine_files and uploaded_target_pdf:
+    img_frente, img_reverso = None, None
+
+    # Extracción de imágenes del origen de la INE
+    if len(uploaded_ine_files) == 1 and uploaded_ine_files[0].name.lower().endswith(".pdf"):
+        doc_ine = fitz.open(stream=uploaded_ine_files[0].read(), filetype="pdf")
+        if len(doc_ine) >= 2:
+            pix1 = doc_ine[0].get_pixmap(dpi=300)
+            img_frente = Image.open(io.BytesIO(pix1.tobytes("png")))
+
+            pix2 = doc_ine[1].get_pixmap(dpi=300)
+            img_reverso = Image.open(io.BytesIO(pix2.tobytes("png")))
         else:
-            pix1 = doc[0].get_pixmap(dpi=300)
-            img_pag1 = Image.open(io.BytesIO(pix1.tobytes("png")))
+            st.warning("El PDF de la INE debe tener al menos 2 páginas.")
 
-            pix2 = doc[1].get_pixmap(dpi=300)
-            img_pag2 = Image.open(io.BytesIO(pix2.tobytes("png")))
-
-            hoja_final = combinar_frente_y_reverso(img_pag1, img_pag2)
-
-            nuevo_doc = fitz.open()
-            img_bytes = io.BytesIO()
-            hoja_final.save(img_bytes, format="PNG")
-            img_bytes.seek(0)
-
-            nueva_pagina = nuevo_doc.new_page(width=612, height=792)
-            nueva_pagina.insert_image(nueva_pagina.rect, stream=img_bytes.getvalue())
-
-            output_buffer = io.BytesIO()
-            nuevo_doc.save(output_buffer)
-            output_buffer.seek(0)
-
-            st.image(hoja_final, caption="Vista previa: Frente y Reverso unificados 100% completos", use_column_width=True)
-            st.success("¡Documento generado con éxito!")
-            st.download_button(
-                label="📥 Descargar PDF Unificado",
-                data=output_buffer,
-                file_name=f"ine_unificada_200_{pdf_file.name}",
-                mime="application/pdf"
-            )
-
-    elif len(uploaded_files) == 2:
-        img1 = Image.open(uploaded_files[0])
-        img2 = Image.open(uploaded_files[1])
-
-        hoja_final = combinar_frente_y_reverso(img1, img2)
-
-        output_buffer = io.BytesIO()
-        hoja_final.save(output_buffer, format="PNG", quality=95)
-        output_buffer.seek(0)
-
-        st.image(hoja_final, caption="Vista previa: Frente y Reverso unificados 100% completos", use_column_width=True)
-        st.success("¡Imagen generada con éxito!")
-        st.download_button(
-            label="📥 Descargar Imagen Unificada",
-            data=output_buffer,
-            file_name="ine_unificada_200.png",
-            mime="image/png"
-        )
+    elif len(uploaded_ine_files) == 2:
+        img_frente = Image.open(uploaded_ine_files[0])
+        img_reverso = Image.open(uploaded_ine_files[1])
 
     else:
-        st.warning("Por favor sube **1 PDF de 2 páginas** o **2 archivos de imagen**.")
+        st.warning("Por favor sube **1 PDF de 2 páginas** o **2 archivos de imagen** para la INE.")
+
+    # Procesamiento e inserción en el PDF destino
+    if img_frente and img_reverso:
+        hoja_ine = combinar_frente_y_reverso(img_frente, img_reverso)
+
+        # Convertir hoja_ine (PIL) a PNG en memoria
+        img_bytes = io.BytesIO()
+        hoja_ine.save(img_bytes, format="PNG")
+        img_bytes.seek(0)
+
+        # Abrir PDF destino
+        doc_destino = fitz.open(stream=uploaded_target_pdf.read(), filetype="pdf")
+
+        # Crear la página donde irá la INE (Página 2, índice 1)
+        nueva_pag_ine = doc_destino.new_page(pno=1, width=612, height=792)
+        nueva_pag_ine.insert_image(nueva_pag_ine.rect, stream=img_bytes.getvalue())
+
+        # Guardar resultado final
+        output_buffer = io.BytesIO()
+        doc_destino.save(output_buffer)
+        output_buffer.seek(0)
+
+        st.image(hoja_ine, caption="Vista previa de la hoja de INE a insertar", use_column_width=True)
+        st.success(f"¡INE procesada e insertada como Página 2 en {uploaded_target_pdf.name}! (Total páginas: {len(doc_destino)})")
+
+        st.download_button(
+            label="📥 Descargar PDF Final Combinado",
+            data=output_buffer,
+            file_name=f"combinado_{uploaded_target_pdf.name}",
+            mime="application/pdf"
+        )

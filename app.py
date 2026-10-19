@@ -5,24 +5,24 @@ from PIL import Image
 
 st.set_page_config(page_title="Ampliador INE 200%", page_icon="🪪", layout="centered")
 
-st.title("🪪 Unificador INE 200% (Ajuste Reverso Completo)")
-st.write("El programa ajusta el recorte del Reverso para capturar todo el texto inferior y apilar ambas imágenes perfectamente en una hoja Carta.")
+st.title("🪪 Unificador INE 200% (Ajuste Distancia Central)")
+st.write("El programa reduce la separación en el centro para subir la imagen del reverso y juntarla más al frente.")
 
 def recortar_y_ampliar_credencial(imagen_pil, es_pagina_1=True, factor_zoom=2.0):
     """
-    Recorta el Cuadrante 1 capturando la altura exacta de cada cara
-    para asegurar que el reverso salga 100% completo.
+    Recorta el Cuadrante 1 quitando 0.5 cm a la página 1 y 1.5 cm a la página 2 
+    para eliminar la franja blanca superior antes de ampliar al 200%.
     """
     img = imagen_pil.convert("RGB")
     ancho, alto = img.size
 
-    # Márgenes superiores (0.5 cm en pág 1, 1.0 cm en pág 2)
-    margen_sup_px = 59 if es_pagina_1 else 118
+    # Márgenes superiores (0.5 cm en pág 1 -> 59px, 1.5 cm en pág 2 -> 177px)
+    margen_sup_px = 59 if es_pagina_1 else 177
 
     # Ancho: Mitad de la hoja (Cuadrante 1)
     ancho_cuadrante = ancho / 2
 
-    # Alto diferenciado: 30% para el frente, 42% para el reverso (captura el texto inferior completo)
+    # Alto diferenciado: 30% para el frente, 42% para el reverso
     porcentaje_alto = 0.30 if es_pagina_1 else 0.42
     alto_cuadrante = int(alto * porcentaje_alto)
 
@@ -39,7 +39,7 @@ def recortar_y_ampliar_credencial(imagen_pil, es_pagina_1=True, factor_zoom=2.0)
     return cuadrante.resize((nuevo_ancho, nuevo_alto), Image.Resampling.LANCZOS)
 
 def combinar_frente_y_reverso(img_frente, img_reverso):
-    """Une el Frente y el Reverso en un lienzo tamaño Carta."""
+    """Une el Frente y el Reverso compactando la separación central."""
     frente_200 = recortar_y_ampliar_credencial(img_frente, es_pagina_1=True, factor_zoom=2.0)
     reverso_200 = recortar_y_ampliar_credencial(img_reverso, es_pagina_1=False, factor_zoom=2.0)
 
@@ -57,12 +57,13 @@ def combinar_frente_y_reverso(img_frente, img_reverso):
         escala_r = ANCHO_MAXIMO / reverso_200.width
         reverso_200 = reverso_200.resize((ANCHO_MAXIMO, int(reverso_200.height * escala_r)), Image.Resampling.LANCZOS)
 
-    # Acomodo compacto para garantizar que ambos entren completos
+    # Posicionamiento más compacto
     pos_x_frente = (ANCHO_CARTA - frente_200.width) // 2
-    pos_y_frente = 50  # Pegado más arriba
+    pos_y_frente = 50
 
     pos_x_reverso = (ANCHO_CARTA - reverso_200.width) // 2
-    pos_y_reverso = pos_y_frente + frente_200.height + 40  # Separación pequeña de 40px
+    # Reducimos la separación intermedia de 40px a solo 10px para pegarlas más
+    pos_y_reverso = pos_y_frente + frente_200.height + 10  
 
     hoja_carta.paste(frente_200, (pos_x_frente, pos_y_frente))
     hoja_carta.paste(reverso_200, (pos_x_reverso, pos_y_reverso))
@@ -103,7 +104,7 @@ if uploaded_files:
             nuevo_doc.save(output_buffer)
             output_buffer.seek(0)
 
-            st.image(hoja_final, caption="Vista previa: Frente y Reverso unificados 100% completos", use_column_width=True)
+            st.image(hoja_final, caption="Vista previa: Reverso subido y juntado al frente", use_column_width=True)
             st.success("¡Documento generado con éxito!")
             st.download_button(
                 label="📥 Descargar PDF Unificado",
@@ -122,7 +123,7 @@ if uploaded_files:
         hoja_final.save(output_buffer, format="PNG", quality=95)
         output_buffer.seek(0)
 
-        st.image(hoja_final, caption="Vista previa: Frente y Reverso unificados 100% completos", use_column_width=True)
+        st.image(hoja_final, caption="Vista previa: Reverso subido y juntado al frente", use_column_width=True)
         st.success("¡Imagen generada con éxito!")
         st.download_button(
             label="📥 Descargar Imagen Unificada",

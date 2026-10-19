@@ -1,91 +1,72 @@
 import io
 import fitz  # PyMuPDF
 import streamlit as st
-from PIL import Image, ImageChops
+from PIL import Image
 
 st.set_page_config(page_title="Ampliador INE 200%", page_icon="🪪", layout="centered")
 
-st.title("🪪 Procesador de INE (Frente y Reverso Desplazados)")
-st.write("Sube el PDF o la imagen. El programa extraerá las credenciales sin importar en qué posición o esquina estén, las ampliará al **200%** y las organizará en una **hoja tamaño Carta**.")
+st.title("🪪 Ampliador de Primer Cuadrante al 200%")
+st.write("Sube tu documento. El programa tomará la **esquina superior izquierda (Cuadrante 1)** de cada hoja, la ampliará al **200%** y la colocará ocupando la nueva **hoja tamaño Carta**.")
 
-def extraer_y_apilar_ine(imagen_pil, factor_zoom=2.0):
-    """Detecta las credenciales en la hoja, las recorta, las amplía al 200% y las distribuye en hoja carta."""
+def ampliar_primer_cuadrante(imagen_pil, factor_zoom=2.0):
+    """Recorta la esquina superior izquierda (Cuadrante 1) y la amplía al 200% sobre una hoja carta."""
     img = imagen_pil.convert("RGB")
     ancho, alto = img.size
 
-    # 1. Extraer la mitad superior y la mitad inferior de la imagen original
-    mitad_superior = img.crop((0, 0, ancho, alto / 2))
-    mitad_inferior = img.crop((0, alto / 2, ancho, alto))
+    # 1. Recortar estrictamente el primer cuadrante (mitad superior izquierda)
+    cuadrante_1 = img.crop((0, 0, ancho / 2, alto / 2))
 
-    def recortar_fondo_blanco(crop_img):
-        """Elimina el espacio blanco sobrante alrededor de cada credencial."""
-        bg = Image.new(crop_img.mode, crop_img.size, (255, 255, 255))
-        diff = ImageChops.difference(crop_img, bg)
-        # Usar un umbral para ignorar sombras ligeras del escáner
-        bbox = diff.getbbox()
-        if bbox:
-            return crop_img.crop(bbox)
-        return crop_img
+    # 2. Multiplicar dimensiones al 200%
+    nuevo_ancho = int(cuadrante_1.width * factor_zoom)
+    nuevo_alto = int(cuadrante_1.height * factor_zoom)
 
-    credencial_1 = recortar_fondo_blanco(mitad_superior)
-    credencial_2 = recortar_fondo_blanco(mitad_inferior)
+    # Escalado LANCZOS para mantener la máxima nitidez en letras y fotos
+    cuadrante_ampliado = cuadrante_1.resize((nuevo_ancho, nuevo_alto), Image.Resampling.LANCZOS)
 
-    # 2. Ampliar cada credencial recortada al 200%
-    cred_1_200 = credencial_1.resize((int(credencial_1.width * factor_zoom), int(credencial_1.height * factor_zoom)), Image.Resampling.LANCZOS)
-    cred_2_200 = credencial_2.resize((int(credencial_2.width * factor_zoom), int(credencial_2.height * factor_zoom)), Image.Resampling.LANCZOS)
-
-    # 3. Crear Lienzo Hoja Carta Estándar a 300 DPI (2550 x 3300 px)
+    # 3. Crear el lienzo en blanco para Hoja Carta (2550 x 3300 px a 300 DPI)
     ANCHO_CARTA, ALTO_CARTA = 2550, 3300
     hoja_carta = Image.new("RGB", (ANCHO_CARTA, ALTO_CARTA), (255, 255, 255))
 
-    # Ajustar ancho máximo para que no sobresalgan de la hoja carta
-    ANCHO_MAXIMO = ANCHO_CARTA - 200  # Margen lateral de 100px a cada lado
+    # Ajustar si el ancho ampliado excede ligeramente los márgenes de la carta
+    if cuadrante_ampliado.width > ANCHO_CARTA:
+        escala = ANCHO_CARTA / cuadrante_ampliado.width
+        cuadrante_ampliado = cuadrante_ampliado.resize(
+            (ANCHO_CARTA, int(cuadrante_ampliado.height * escala)), 
+            Image.Resampling.LANCZOS
+        )
 
-    if cred_1_200.width > ANCHO_MAXIMO:
-        escala = ANCHO_MAXIMO / cred_1_200.width
-        cred_1_200 = cred_1_200.resize((ANCHO_MAXIMO, int(cred_1_200.height * escala)), Image.Resampling.LANCZOS)
-
-    if cred_2_200.width > ANCHO_MAXIMO:
-        escala = ANCHO_MAXIMO / cred_2_200.width
-        cred_2_200 = cred_2_200.resize((ANCHO_MAXIMO, int(cred_2_200.height * escala)), Image.Resampling.LANCZOS)
-
-    # 4. Posicionar ambas credenciales centradas (una en cada mitad de la hoja)
-    # Mitad Superior (Frente o Reverso)
-    pos_x1 = (ANCHO_CARTA - cred_1_200.width) // 2
-    pos_y1 = (ALTO_CARTA // 4) - (cred_1_200.height // 2)
-
-    # Mitad Inferior (Frente o Reverso)
-    pos_x2 = (ANCHO_CARTA - cred_2_200.width) // 2
-    pos_y2 = ((3 * ALTO_CARTA) // 4) - (cred_2_200.height // 2)
-
-    hoja_carta.paste(cred_1_200, (pos_x1, max(100, pos_y1)))
-    hoja_carta.paste(cred_2_200, (pos_x2, pos_y2))
+    # 4. Pegar el cuadrante ampliado en la parte superior de la nueva hoja carta
+    pos_x = (ANCHO_CARTA - cuadrante_ampliado.width) // 2
+    hoja_carta.paste(cuadrante_ampliado, (pos_x, 0))
 
     return hoja_carta
 
-uploaded_file = st.file_uploader("Selecciona la imagen o PDF de tu INE", type=["pdf", "png", "jpg", "jpeg"])
+uploaded_file = st.file_uploader("Selecciona tu archivo PDF o Imagen", type=["pdf", "png", "jpg", "jpeg"])
 
 if uploaded_file is not None:
     file_bytes = uploaded_file.read()
     filename = uploaded_file.name.lower()
 
-    st.info("Detectando ambas credenciales, eliminando espacio blanco y ampliando al 200%...")
+    st.info("Procesando el primer cuadrante de cada página al 200%...")
 
     # CASO PDF
     if filename.endswith(".pdf"):
         doc = fitz.open(stream=file_bytes, filetype="pdf")
         nuevo_doc = fitz.open()
 
-        for page in doc:
+        for num_pag, page in enumerate(doc, start=1):
+            # Renderizar la página a 300 DPI para alta definición
             pix = page.get_pixmap(dpi=300)
             img_original = Image.open(io.BytesIO(pix.tobytes("png")))
 
-            hoja_final = extraer_y_apilar_ine(img_original, factor_zoom=2.0)
+            # Ampliar cuadrante 1
+            hoja_final = ampliar_primer_cuadrante(img_original, factor_zoom=2.0)
 
             img_bytes = io.BytesIO()
             hoja_final.save(img_bytes, format="PNG")
             img_bytes.seek(0)
 
+            # Insertar en nueva página Carta (612 x 792 pt)
             nueva_pagina = nuevo_doc.new_page(width=612, height=792)
             nueva_pagina.insert_image(nueva_pagina.rect, stream=img_bytes.getvalue())
 
@@ -93,30 +74,30 @@ if uploaded_file is not None:
         nuevo_doc.save(output_buffer)
         output_buffer.seek(0)
 
-        st.success("¡Documento generado con éxito en Tamaño Carta!")
+        st.success(f"¡Procesadas {len(doc)} página(s) con éxito!")
         st.download_button(
-            label="📥 Descargar PDF Reorganizado al 200%",
+            label="📥 Descargar PDF Ampliado al 200%",
             data=output_buffer,
-            file_name=f"ine_reorganizada_200_{uploaded_file.name}",
+            file_name=f"ine_cuadrante1_200_{uploaded_file.name}",
             mime="application/pdf"
         )
 
-    # CASO IMAGEN (JPG / PNG)
+    # CASO IMAGEN
     else:
         img_original = Image.open(io.BytesIO(file_bytes))
-        hoja_final = extraer_y_apilar_ine(img_original, factor_zoom=2.0)
+        hoja_final = ampliar_primer_cuadrante(img_original, factor_zoom=2.0)
 
         output_buffer = io.BytesIO()
         fmt = "PNG" if filename.endswith(".png") else "JPEG"
         hoja_final.save(output_buffer, format=fmt, quality=95)
         output_buffer.seek(0)
 
-        st.image(hoja_final, caption="Vista previa: Hojas divididas al 50% con credenciales ampliadas al 200%", use_column_width=True)
+        st.image(hoja_final, caption="Vista previa: Primer cuadrante ampliado al 200% en Hoja Carta", use_column_width=True)
 
-        st.success("¡Imagen generada con éxito en Tamaño Carta!")
+        st.success("¡Imagen ampliada con éxito!")
         st.download_button(
-            label="📥 Descargar Imagen Reorganizada al 200%",
+            label="📥 Descargar Imagen Ampliada al 200%",
             data=output_buffer,
-            file_name=f"ine_reorganizada_200_{uploaded_file.name}",
+            file_name=f"ine_cuadrante1_200_{uploaded_file.name}",
             mime=f"image/{fmt.lower()}"
         )

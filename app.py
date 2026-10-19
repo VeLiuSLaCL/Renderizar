@@ -72,7 +72,7 @@ def combinar_frente_y_reverso(img_frente, img_reverso):
 st.subheader("1. Sube el origen de la INE")
 uploaded_ine_files = st.file_uploader(
     "PDF de 2 páginas de la INE o 2 Imágenes (Frente y Reverso)",
-    type=["pdf", "png", "jpg", "jpeg"],
+    type=["pdf"],
     accept_multiple_files=True,
     key="ine_files"
 )

@@ -39,7 +39,7 @@ def recortar_y_ampliar_credencial(imagen_pil, es_pagina_1=True, factor_zoom=2.0)
     return cuadrante.resize((nuevo_ancho, nuevo_alto), Image.Resampling.LANCZOS)
 
 def combinar_frente_y_reverso(img_frente, img_reverso):
-    """Une el Frente (al fondo) y el Reverso (al frente) subiendo ligeramente la segunda imagen."""
+    """Une el Frente (al fondo) y el Reverso (al frente) subiendo 0.5 cm adicionales la segunda imagen."""
     frente_200 = recortar_y_ampliar_credencial(img_frente, es_pagina_1=True, factor_zoom=2.0)
     reverso_200 = recortar_y_ampliar_credencial(img_reverso, es_pagina_1=False, factor_zoom=2.0)
 
@@ -57,12 +57,12 @@ def combinar_frente_y_reverso(img_frente, img_reverso):
         escala_r = ANCHO_MAXIMO / reverso_200.width
         reverso_200 = reverso_200.resize((ANCHO_MAXIMO, int(reverso_200.height * escala_r)), Image.Resampling.LANCZOS)
 
-    # Acomodo: Subimos el reverso usando un offset negativo (-50px) sobre la altura del frente
+    # Acomodo: Se eleva la segunda imagen 110px (~0.5 cm extra respecto a los 50px anteriores)
     pos_x_frente = (ANCHO_CARTA - frente_200.width) // 2
-    pos_y_frente = 50  # Pegado más arriba
+    pos_y_frente = 50  # Pegado arriba
 
     pos_x_reverso = (ANCHO_CARTA - reverso_200.width) // 2
-    pos_y_reverso = pos_y_frente + frente_200.height - 50  # Subimos la segunda imagen 50px más arriba
+    pos_y_reverso = pos_y_frente + frente_200.height - 110  # Subir 0.5 cm más la segunda imagen
 
     # 1. PASO 1 (AL FONDO): Pegamos primero la Imagen 1
     hoja_carta.paste(frente_200, (pos_x_frente, pos_y_frente))
